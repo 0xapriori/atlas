@@ -38,6 +38,7 @@ struct CallConfig {
     bool requirePostOps;
     bool zeroSolvers;
     bool reuseUserOp;
+    bool reuseDAppOp;
     bool userAuctioneer;
     bool solverAuctioneer;
     bool unknownAuctioneer;
@@ -59,6 +60,7 @@ enum CallConfigIndex {
     RequirePostOpsCall,
     ZeroSolvers,
     ReuseUserOp,
+    ReuseDAppOp,
     UserAuctioneer,
     SolverAuctioneer,
     UnknownAuctioneer,

@@ -51,28 +51,14 @@ contract Atlas is Escrow, Factory {
         returns (bool auctionWon)
     {
         uint256 gasMarker = gasleft(); // + 21_000 + (msg.data.length * CALLDATA_LENGTH_PREMIUM);
-        bool isSimulation = msg.sender == SIMULATOR;
 
         // Get or create the execution environment
-        address executionEnvironment;
-        DAppConfig memory dConfig;
-        (executionEnvironment, dConfig) = _getOrCreateExecutionEnvironment(userOp);
-
-        // Gracefully return if not valid. This allows signature data to be stored, which helps prevent
-        // replay attacks.
-        // NOTE: Currently reverting instead of graceful return to help w/ testing.
-        (bytes32 userOpHash, ValidCallsResult validCallsResult) = IAtlasVerification(VERIFICATION).validateCalls(
-            dConfig, userOp, solverOps, dAppOp, msg.value, msg.sender, isSimulation
-        );
-        if (validCallsResult != ValidCallsResult.Valid) {
-            if (isSimulation) revert VerificationSimFail();
-            else revert ValidCalls(validCallsResult);
-        }
+        (address executionEnvironment, DAppConfig memory dConfig) = _getOrCreateExecutionEnvironment(userOp);
 
         // Initialize the lock
         _initializeEscrowLock(executionEnvironment, gasMarker, userOp.value);
 
-        try this.execute{ value: msg.value }(dConfig, userOp, solverOps, executionEnvironment, msg.sender, userOpHash)
+        try this.execute{ value: msg.value }(dConfig, userOp, solverOps, dAppOp, executionEnvironment, msg.sender)
         returns (bool _auctionWon, uint256 winningSolverIndex) {
             auctionWon = _auctionWon;
             // Gas Refund to sender only if execution is successful
@@ -81,7 +67,7 @@ contract Atlas is Escrow, Factory {
             emit MetacallResult(msg.sender, userOp.from, auctionWon ? solverOps[winningSolverIndex].from : address(0));
         } catch (bytes memory revertData) {
             // Bubble up some specific errors
-            _handleErrors(bytes4(revertData), dConfig.callConfig);
+            _handleErrors(dConfig, userOp, solverOps, dAppOp, bytes4(revertData), dConfig.callConfig);
 
             // Refund the msg.value to sender if it errored
             if (msg.value != 0) SafeTransferLib.safeTransferETH(msg.sender, msg.value);
@@ -97,9 +83,9 @@ contract Atlas is Escrow, Factory {
         DAppConfig calldata dConfig,
         UserOperation calldata userOp,
         SolverOperation[] calldata solverOps,
+        DAppOperation calldata dAppOp,
         address executionEnvironment,
-        address bundler,
-        bytes32 userOpHash
+        address bundler
     )
         external
         payable
@@ -108,8 +94,19 @@ contract Atlas is Escrow, Factory {
         // This is a self.call made externally so that it can be used with try/catch
         if (msg.sender != address(this)) revert InvalidAccess();
 
+        // Gracefully return if not valid. This allows signature data to be stored, which helps prevent
+        // replay attacks. Revert occurs in a try / catch. 
+        (bytes32 userOpHash, ValidCallsResult validCallsResult) = IAtlasVerification(VERIFICATION).validateCalls(
+            dConfig, userOp, solverOps, dAppOp, msg.value, bundler, bundler == SIMULATOR
+        );
+
+        if (validCallsResult != ValidCallsResult.Valid) revert ValidCalls(validCallsResult);
+
         (bytes memory returnData, EscrowKey memory key) =
             _preOpsUserExecutionIteration(dConfig, userOp, solverOps, executionEnvironment, bundler);
+
+
+        bool isUserReplay = _checkIfUserOpReplay(dConfig, userOpHash);
 
         for (; winningSearcherIndex < solverOps.length;) {
             // valid solverOps are packed from left of array - break at first invalid solverOp
@@ -118,7 +115,7 @@ contract Atlas is Escrow, Factory {
             // if (solverOp.from == address(0)) break;
 
             (auctionWon, key) = _solverExecutionIteration(
-                dConfig, userOp, solverOp, returnData, executionEnvironment, bundler, userOpHash, key
+                dConfig, userOp, solverOp, returnData, executionEnvironment, bundler, userOpHash, isUserReplay, key
             );
             emit SolverExecution(solverOp.from, winningSearcherIndex, auctionWon);
             if (auctionWon) break;
@@ -222,13 +219,14 @@ contract Atlas is Escrow, Factory {
         address executionEnvironment,
         address bundler,
         bytes32 userOpHash,
+        bool isUserReplay,
         EscrowKey memory key
     )
         internal
         returns (bool auctionWon, EscrowKey memory)
     {
         (auctionWon, key) = _executeSolverOperation(
-            dConfig, userOp, solverOp, dAppReturnData, executionEnvironment, bundler, userOpHash, key
+            dConfig, userOp, solverOp, dAppReturnData, executionEnvironment, bundler, userOpHash, isUserReplay, key
         );
 
         if (auctionWon) {
@@ -240,10 +238,21 @@ contract Atlas is Escrow, Factory {
         return (auctionWon, key);
     }
 
-    function _handleErrors(bytes4 errorSwitch, uint32 callConfig) internal view {
+    function _handleErrors(
+        DAppConfig memory dConfig,
+        UserOperation calldata userOp,
+        SolverOperation[] calldata solverOps,
+        DAppOperation calldata dAppOp,
+        bytes4 errorSwitch, 
+        uint32 callConfig
+    ) 
+        internal 
+    {
         if (msg.sender == SIMULATOR) {
             // Simulation
-            if (errorSwitch == PreOpsSimFail.selector) {
+            if (errorSwitch == ValidCalls.selector) {
+                revert VerificationSimFail();
+            } else if (errorSwitch == PreOpsSimFail.selector) {
                 revert PreOpsSimFail();
             } else if (errorSwitch == UserOpSimFail.selector) {
                 revert UserOpSimFail();
@@ -253,13 +262,28 @@ contract Atlas is Escrow, Factory {
                 revert PostOpsSimFail();
             }
         }
-        if (errorSwitch == UserNotFulfilled.selector) {
-            revert UserNotFulfilled();
+
+        // No replay protection needed on invalid userop / dappOp / auctioneer
+        // NOTE: These won't be executed. Replay protection on unauthorized txs
+        // would lead to censorship.
+        if (errorSwitch == ValidCalls.selector) {
+            revert ValidCalls(ValidCallsResult.Invalid);
         }
+
+        bytes32 userOpHash = IAtlasVerification(VERIFICATION).replayProtectionOnRevert(
+            dConfig, userOp, dAppOp, msg.sender
+        );
+       
+        // If UserOps are allowed to be reused, block solverOp replay
+        // NOTE: The UserOp hash is effectively the SolverOp nonce. 
         if (callConfig.allowsReuseUserOps()) {
-            assembly {
-                mstore(0, errorSwitch)
-                revert(0, 4)
+
+            _usedOpHashes[userOpHash] = true;
+
+            for (uint256 i; i < solverOps.length; i++) {
+                if (IAtlasVerification(VERIFICATION).verifySolverOp(solverOps[i], userOpHash, msg.sender) == 0) {
+                    _preventOpHashReplay(userOp, solverOps[i]);
+                }
             }
         }
     }

@@ -84,6 +84,7 @@ abstract contract Escrow is AtlETH {
         address environment,
         address bundler,
         bytes32 userOpHash,
+        bool isUserReplay,
         EscrowKey memory key
     )
         internal
@@ -98,8 +99,8 @@ abstract contract Escrow is AtlETH {
             uint256 gasLimit;
             (result, gasLimit) = _validateSolverOperation(dConfig, solverOp, gasWaterMark, result);
 
-            if (dConfig.callConfig.allowsTrustedOpHash()) {
-                if (!_handleAltOpHash(userOp, solverOp)) return (false, key);
+            if (isUserReplay || dConfig.callConfig.allowsTrustedOpHash()) {
+                if (!_preventOpHashReplay(userOp, solverOp)) return (false, key);
             }
 
             // If there are no errors, attempt to execute
@@ -240,7 +241,7 @@ abstract contract Escrow is AtlETH {
         return (result, gasLimit);
     }
 
-    function _handleAltOpHash(
+    function _preventOpHashReplay(
         UserOperation calldata userOp,
         SolverOperation calldata solverOp
     )
@@ -252,11 +253,19 @@ abstract contract Escrow is AtlETH {
             return false;
         }
         bytes32 hashId = keccak256(abi.encodePacked(solverOp.userOpHash, solverOp.from, solverOp.deadline));
-        if (_solverOpHashes[hashId]) {
+        if (_usedOpHashes[hashId]) {
             return false;
         }
-        _solverOpHashes[hashId] = true;
+        _usedOpHashes[hashId] = true;
         return true;
+    }
+
+    function _checkIfUserOpReplay(
+        DAppConfig calldata dConfig,
+        bytes32 userOpHash
+    ) internal view returns (bool) {
+        if (!dConfig.callConfig.allowsReuseUserOps()) return false;
+        return _usedOpHashes[userOpHash];
     }
 
     // Returns a SolverOutcome enum value

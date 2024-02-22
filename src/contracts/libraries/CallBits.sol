@@ -83,6 +83,7 @@ library CallBits {
             requirePostOps: needsPostOpsCall(encodedCallConfig),
             zeroSolvers: allowsZeroSolvers(encodedCallConfig),
             reuseUserOp: allowsReuseUserOps(encodedCallConfig),
+            reuseDAppOp: allowsReuseDAppOps(encodedCallConfig),
             userAuctioneer: allowsUserAuctioneer(encodedCallConfig),
             solverAuctioneer: allowsSolverAuctioneer(encodedCallConfig),
             unknownAuctioneer: allowsUnknownAuctioneer(encodedCallConfig),
@@ -135,6 +136,10 @@ library CallBits {
 
     function allowsReuseUserOps(uint32 callConfig) internal pure returns (bool reuseUserOp) {
         reuseUserOp = (callConfig & 1 << uint32(CallConfigIndex.ReuseUserOp) != 0);
+    }
+
+    function allowsReuseDAppOps(uint32 callConfig) internal pure returns (bool reuseDAppOp) {
+        reuseDAppOp = (callConfig & 1 << uint32(CallConfigIndex.ReuseDAppOp) != 0);
     }
 
     function allowsUserAuctioneer(uint32 callConfig) internal pure returns (bool userAuctioneer) {

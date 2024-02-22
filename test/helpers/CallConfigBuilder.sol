@@ -17,6 +17,7 @@ contract CallConfigBuilder is Test {
     bool requirePostOps;
     bool zeroSolvers;
     bool reuseUserOp;
+    bool reuseDAppOp;
     bool userAuctioneer;
     bool solverAuctioneer;
     bool unknownAuctioneer;
@@ -80,6 +81,11 @@ contract CallConfigBuilder is Test {
         return this;
     }
 
+    function withReuseDAppOp(bool _reuseDAppOp) public returns (CallConfigBuilder) {
+        reuseDAppOp = _reuseDAppOp;
+        return this;
+    }
+
     function withUserAuctioneer(bool _userAuctioneer) public returns (CallConfigBuilder) {
         userAuctioneer = _userAuctioneer;
         return this;
@@ -128,6 +134,7 @@ contract CallConfigBuilder is Test {
             requirePostOps,
             zeroSolvers,
             reuseUserOp,
+            reuseDAppOp,
             userAuctioneer,
             solverAuctioneer,
             unknownAuctioneer,

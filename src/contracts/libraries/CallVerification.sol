@@ -16,6 +16,26 @@ library CallVerification {
         altOpHash = keccak256(abi.encodePacked(userOp.from, userOp.to, userOp.dapp, userOp.control, userOp.sessionKey));
     }
 
+    function getSolverHash(SolverOperation calldata solverOp) internal pure returns (bytes32 solverHash) {
+        return keccak256(
+            abi.encode(
+                SOLVER_TYPE_HASH,
+                solverOp.from,
+                solverOp.to,
+                solverOp.value,
+                solverOp.gas,
+                solverOp.maxFeePerGas,
+                solverOp.deadline,
+                solverOp.solver,
+                solverOp.control,
+                solverOp.userOpHash,
+                solverOp.bidToken,
+                solverOp.bidAmount,
+                keccak256(solverOp.data)
+            )
+        );
+    }
+
     function getCallChainHash(
         DAppConfig memory dConfig,
         UserOperation memory userOp,

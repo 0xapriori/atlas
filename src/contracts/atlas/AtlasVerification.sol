@@ -73,6 +73,7 @@ contract AtlasVerification is EIP712, DAppIntegration {
     using ECDSA for bytes32;
     using CallBits for uint32;
     using CallVerification for UserOperation;
+    using CallVerification for SolverOperation;
 
     uint256 internal constant FULL_BITMAP = uint256(0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
     uint256 internal constant FIRST_16_BITS_FULL = uint256(0xFFFF);
@@ -211,6 +212,29 @@ contract AtlasVerification is EIP712, DAppIntegration {
         return (userOpHash, ValidCallsResult.Valid);
     }
 
+    function replayProtectionOnRevert(
+        DAppConfig calldata dConfig,
+        UserOperation calldata userOp,
+        DAppOperation calldata dAppOp,
+        address msgSender
+    )
+        external returns (bytes32)
+    {
+        if (msg.sender != ATLAS) revert AtlasErrors.InvalidCaller();
+        
+        if (!dConfig.callConfig.allowsReuseUserOps()) {
+            _verifyUser(dConfig, userOp, msgSender, false);
+        }
+        
+        if (!dConfig.callConfig.allowsReuseDAppOps()) {
+            _verifyDApp(dConfig, dAppOp, msgSender, false, false);
+        }
+
+        return dConfig.callConfig.allowsTrustedOpHash() ? 
+            userOp.getAltOperationHash() : 
+            userOp.getUserOperationHash();
+    }
+
     function verifySolverOp(
         SolverOperation calldata solverOp,
         bytes32 userOpHash,
@@ -267,33 +291,13 @@ contract AtlasVerification is EIP712, DAppIntegration {
     }
 
     function getSolverPayload(SolverOperation calldata solverOp) external view returns (bytes32 payload) {
-        payload = _hashTypedDataV4(_getSolverHash(solverOp));
+        payload = _hashTypedDataV4(solverOp.getSolverHash());
     }
 
     function _verifySolverSignature(SolverOperation calldata solverOp) internal view returns (bool) {
         if (solverOp.signature.length == 0) return false;
-        address signer = _hashTypedDataV4(_getSolverHash(solverOp)).recover(solverOp.signature);
+        address signer = _hashTypedDataV4(solverOp.getSolverHash()).recover(solverOp.signature);
         return signer == solverOp.from;
-    }
-
-    function _getSolverHash(SolverOperation calldata solverOp) internal pure returns (bytes32 solverHash) {
-        return keccak256(
-            abi.encode(
-                SOLVER_TYPE_HASH,
-                solverOp.from,
-                solverOp.to,
-                solverOp.value,
-                solverOp.gas,
-                solverOp.maxFeePerGas,
-                solverOp.deadline,
-                solverOp.solver,
-                solverOp.control,
-                solverOp.userOpHash,
-                solverOp.bidToken,
-                solverOp.bidAmount,
-                keccak256(solverOp.data)
-            )
-        );
     }
 
     //

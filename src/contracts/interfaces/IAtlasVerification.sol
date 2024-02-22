@@ -20,6 +20,14 @@ interface IAtlasVerification {
         external
         returns (bytes32 userOpHash, ValidCallsResult);
 
+    function replayProtectionOnRevert(
+        DAppConfig calldata dConfig,
+        UserOperation calldata userOp,
+        DAppOperation calldata dAppOp,
+        address msgSender
+    )
+        external returns (bytes32);
+
     function verifySolverOp(
         SolverOperation calldata solverOp,
         bytes32 userOpHash,

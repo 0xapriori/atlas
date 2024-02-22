@@ -26,13 +26,14 @@ contract CallBitsTest is Test {
             requirePostOps: false,
             zeroSolvers: true,
             reuseUserOp: false,
-            userAuctioneer: true,
-            solverAuctioneer: false,
-            unknownAuctioneer: true,
-            verifyCallChainHash: false,
-            forwardReturnData: true,
-            requireFulfillment: false,
-            trustedOpHash: true
+            reuseDAppOp: true,
+            userAuctioneer: false,
+            solverAuctioneer: true,
+            unknownAuctioneer: false,
+            verifyCallChainHash: true,
+            forwardReturnData: false,
+            requireFulfillment: true,
+            trustedOpHash: false
         });
 
         callConfig2 = CallConfig({
@@ -47,6 +48,7 @@ contract CallBitsTest is Test {
             requirePostOps: !callConfig1.requirePostOps,
             zeroSolvers: !callConfig1.zeroSolvers,
             reuseUserOp: !callConfig1.reuseUserOp,
+            reuseDAppOp: !callConfig1.reuseDAppOp,
             userAuctioneer: !callConfig1.userAuctioneer,
             solverAuctioneer: !callConfig1.solverAuctioneer,
             unknownAuctioneer: !callConfig1.unknownAuctioneer,
@@ -65,7 +67,7 @@ contract CallBitsTest is Test {
             "callConfig1 incorrect"
         );
 
-        expectedBitMapString = "00000000000000010101010101010101";
+        expectedBitMapString = "00000000000001010101010101010101";
         assertEq(
             TestUtils.uint32ToBinaryString(CallBits.encodeCallConfig(callConfig2)),
             expectedBitMapString,

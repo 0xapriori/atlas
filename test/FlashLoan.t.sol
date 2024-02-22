@@ -263,6 +263,7 @@ contract DummyDAppControlBuilder is DAppControl {
                 requirePostOps: false,
                 zeroSolvers: false,
                 reuseUserOp: false,
+                reuseDAppOp: false,
                 userAuctioneer: true,
                 solverAuctioneer: true,
                 unknownAuctioneer: true,
