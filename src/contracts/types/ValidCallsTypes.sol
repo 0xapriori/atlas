@@ -17,6 +17,8 @@ enum ValidCallsResult {
     InvalidAuctioneer,
     InvalidBundler,
     OpHashMismatch,
+    DeadlineMismatch,
     InvalidControl,
+    InvalidDAppNonce,
     Invalid
 }
