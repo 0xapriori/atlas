@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import { ISolverContract } from "../interfaces/ISolverContract.sol";
 import { ISafetyLocks } from "../interfaces/ISafetyLocks.sol";
@@ -40,6 +40,7 @@ contract ExecutionEnvironment is Base {
     }
 
     modifier validControlHash() {
+        console.log("a");
         if (_control().codehash != _controlCodeHash()) {
             revert("ERR-EV008 InvalidCodeHash");
         }

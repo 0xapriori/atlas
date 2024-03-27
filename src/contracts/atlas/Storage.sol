@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import "../types/EscrowTypes.sol";
 import "../types/LockTypes.sol";
@@ -10,8 +10,6 @@ import { AtlasErrors } from "src/contracts/types/AtlasErrors.sol";
 contract Storage is AtlasEvents, AtlasErrors {
     // Atlas constants
     uint256 internal constant GAS_USED_DECIMALS_TO_DROP = 1000;
-    address internal constant UNLOCKED = address(1);
-    uint256 internal constant _UNLOCKED_UINT = 1;
 
     uint256 public immutable ESCROW_DURATION;
     address public immutable VERIFICATION;
@@ -46,12 +44,22 @@ contract Storage is AtlasEvents, AtlasErrors {
     address public surchargeRecipient; // Fastlane surcharge recipient
     address public pendingSurchargeRecipient; // For 2-step transfer process
 
+    address internal constant _UNLOCKED = address(0);
+
     // Atlas SafetyLocks (transient storage)
+    /*
     address public lock; // transient storage
     uint256 internal _solverLock; // transient storage
     uint256 public claims; // transient storage
     uint256 public withdrawals; // transient storage
     uint256 public deposits; // transient storage
+    */
+
+    uint256 internal constant _LOCK = 0x0000000000000000000000000000000000000000000000000000000000000100;
+    uint256 internal constant _SOLVER_LOCK = 0x0000000000000000000000000000000000000000000000000000000000000120;
+    uint256 internal constant _CLAIMS = 0x0000000000000000000000000000000000000000000000000000000000000140;
+    uint256 internal constant _WITHDRAWALS = 0x0000000000000000000000000000000000000000000000000000000000000160;
+    uint256 internal constant _DEPOSITS = 0x0000000000000000000000000000000000000000000000000000000000000180;
 
     uint256 internal _solverCalledBack = 1 << 161;
     uint256 internal _solverFulfilled = 1 << 162;
@@ -76,24 +84,47 @@ contract Storage is AtlasEvents, AtlasErrors {
         surchargeRecipient = _surchargeRecipient;
 
         // Gas Accounting - transient storage (delete this from constructor post dencun)
-        lock = UNLOCKED;
-        _solverLock = _UNLOCKED_UINT;
-        claims = type(uint256).max;
-        withdrawals = type(uint256).max;
-        deposits = type(uint256).max;
 
         emit SurchargeRecipientTransferred(_surchargeRecipient);
     }
 
     function solverLockData() public view returns (address currentSolver, bool calledBack, bool fulfilled) {
-        uint256 solverLock = _solverLock;
+        uint256 solverLock = tRead(_SOLVER_LOCK);
         currentSolver = address(uint160(solverLock));
         calledBack = solverLock & _solverCalledBack != 0;
         fulfilled = solverLock & _solverFulfilled != 0;
     }
 
     function solver() public view returns (address) {
-        return address(uint160(_solverLock));
+        return address(uint160(uint256(tRead(_SOLVER_LOCK))));
+    }
+
+    function tRead(uint256 loc) internal view returns (uint256 data) {
+        assembly {
+            data := tload(loc)
+        }
+    }
+
+    function tWrite(uint256 loc, uint256 data) internal {
+        assembly {
+            tstore(loc, data)
+        }
+    }
+
+    function lock() public view returns (address) {
+        return address(uint160(tRead(_LOCK)));
+    }
+
+    function deposits() external returns (uint256 _deposits) {
+        _deposits = tRead(_DEPOSITS);
+    }
+
+    function claims() external returns (uint256 _claims) {
+        _claims = tRead(_CLAIMS);
+    }
+
+    function withdrawals() external returns (uint256 _withdrawals) {
+        _withdrawals = tRead(_WITHDRAWALS);
     }
 
     function _computeDomainSeparator() internal view virtual returns (bytes32) { }

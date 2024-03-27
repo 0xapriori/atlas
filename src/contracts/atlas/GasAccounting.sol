@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import { SafetyLocks } from "../atlas/SafetyLocks.sol";
 
@@ -36,6 +36,10 @@ abstract contract GasAccounting is SafetyLocks {
             return false;
         }
 
+        uint256 deposits = tRead(_DEPOSITS);
+        uint256 claims = tRead(_CLAIMS);
+        uint256 withdrawals = tRead(_WITHDRAWALS);
+
         if (!fulfilled) {
             return (deposits >= claims + withdrawals);
         }
@@ -43,12 +47,12 @@ abstract contract GasAccounting is SafetyLocks {
     }
 
     function contribute() external payable {
-        if (lock != msg.sender) revert InvalidExecutionEnvironment(lock);
+        if (lock() != msg.sender) revert InvalidExecutionEnvironment(lock());
         _contribute();
     }
 
     function borrow(uint256 amount) external payable {
-        if (lock != msg.sender) revert InvalidExecutionEnvironment(lock);
+        if (lock() != msg.sender) revert InvalidExecutionEnvironment(lock());
         if (_borrow(amount)) {
             SafeTransferLib.safeTransferETH(msg.sender, amount);
         } else {
@@ -57,9 +61,12 @@ abstract contract GasAccounting is SafetyLocks {
     }
 
     function shortfall() external view returns (uint256) {
+        uint256 deposits = tRead(_DEPOSITS);
+        uint256 claims = tRead(_CLAIMS);
+        uint256 withdrawals = tRead(_WITHDRAWALS);
+
         uint256 deficit = claims + withdrawals;
-        uint256 _deposits = deposits;
-        return (deficit > _deposits) ? (deficit - _deposits) : 0;
+        return (deficit > deposits) ? (deficit - deposits) : 0;
     }
 
     function reconcile(
@@ -79,31 +86,31 @@ abstract contract GasAccounting is SafetyLocks {
 
         if (maxApprovedGasSpend > bondedBalance) maxApprovedGasSpend = bondedBalance;
 
-        if (lock != environment) revert InvalidExecutionEnvironment(lock);
+        if (lock() != environment) revert InvalidExecutionEnvironment(lock());
 
         (address currentSolver, bool calledBack, bool fulfilled) = solverLockData();
 
         if (solverFrom != currentSolver) revert InvalidSolverFrom(currentSolver);
 
-        uint256 deficit = claims + withdrawals;
-        uint256 surplus = deposits + maxApprovedGasSpend + msg.value;
+        uint256 deficit = tRead(_CLAIMS) + tRead(_WITHDRAWALS);
+        uint256 surplus = tRead(_DEPOSITS) + maxApprovedGasSpend + msg.value;
 
         // if (deficit > surplus) revert InsufficientTotalBalance(deficit - surplus);
 
         // Add msg.value to solver's deposits
-        if (msg.value > 0 || maxApprovedGasSpend > 0) deposits = surplus;
+        if (msg.value > 0 || maxApprovedGasSpend > 0) tWrite(_DEPOSITS, surplus);
 
         // CASE: Callback verified but insufficient balance
         if (deficit > surplus) {
             if (!calledBack) {
-                _solverLock = uint256(uint160(currentSolver)) | _solverCalledBack;
+                tWrite(_SOLVER_LOCK, uint256(uint160(currentSolver)) | _solverCalledBack);
             }
             return deficit - surplus;
         }
 
         // CASE: Callback verified and solver duty fulfilled
         if (!calledBack || !fulfilled) {
-            _solverLock = uint256(uint160(currentSolver)) | _solverCalledBack | _solverFulfilled;
+            tWrite(_SOLVER_LOCK, uint256(uint160(currentSolver)) | _solverCalledBack | _solverFulfilled);
         }
         return 0;
     }
@@ -113,13 +120,18 @@ abstract contract GasAccounting is SafetyLocks {
     // ---------------------------------------
 
     function _contribute() internal {
-        if (msg.value != 0) deposits += msg.value;
+        uint256 deposits = tRead(_DEPOSITS);
+
+        if (msg.value != 0) tWrite(_DEPOSITS, deposits + msg.value);
     }
 
     function _borrow(uint256 amount) internal returns (bool valid) {
+        uint256 claims = tRead(_CLAIMS);
+        uint256 withdrawals = tRead(_WITHDRAWALS);
+
         if (amount == 0) return true;
         if (address(this).balance < amount + claims + withdrawals) return false;
-        withdrawals += amount;
+        tWrite(_WITHDRAWALS, withdrawals + amount);
         return true;
     }
 
@@ -165,7 +177,9 @@ abstract contract GasAccounting is SafetyLocks {
             accessData[owner] = aData;
 
             bondedTotalSupply -= amount;
-            deposits += amount;
+
+            uint256 deposits = tRead(_DEPOSITS);
+            tWrite(_DEPOSITS, deposits + amount);
         }
     }
 
@@ -186,7 +200,7 @@ abstract contract GasAccounting is SafetyLocks {
 
     function _trySolverLock(SolverOperation calldata solverOp) internal returns (bool valid) {
         if (_borrow(solverOp.value)) {
-            _solverLock = uint256(uint160(solverOp.from));
+            tWrite(_SOLVER_LOCK, uint256(uint160(solverOp.from)));
             return true;
         } else {
             return false;
@@ -221,38 +235,40 @@ abstract contract GasAccounting is SafetyLocks {
         // is treated as the Solver.
 
         // Load what we can from storage so that it shows up in the gasleft() calc
+
+        uint256 deposits = tRead(_DEPOSITS);
+        uint256 claims = tRead(_CLAIMS);
+        uint256 withdrawals = tRead(_WITHDRAWALS);
+
         uint256 _surcharge = surcharge;
-        uint256 _claims = claims;
-        uint256 _withdrawals = withdrawals;
-        uint256 _deposits = deposits;
 
         // Remove any unused gas from the bundler's claim.
         // TODO: consider penalizing bundler for too much unused gas (to prevent high escrow requirements for solvers)
         uint256 gasRemainder = (gasleft() * tx.gasprice);
         gasRemainder += ((gasRemainder * SURCHARGE) / 10_000_000);
-        _claims -= gasRemainder;
+        claims -= gasRemainder;
 
-        if (_deposits < _claims + _withdrawals) {
+        if (deposits < claims + withdrawals) {
             // CASE: in deficit, subtract from bonded balance
-            uint256 amountOwed = _claims + _withdrawals - _deposits;
+            uint256 amountOwed = claims + withdrawals - deposits;
             if (_assign(winningSolver, amountOwed, true, false)) {
-                revert InsufficientTotalBalance((_claims + _withdrawals) - deposits);
+                revert InsufficientTotalBalance((claims + withdrawals) - deposits);
             }
         } else {
             // CASE: in surplus, add to bonded balance
             // TODO: make sure this works w/ the surcharge 10%
-            uint256 amountCredited = _deposits - _claims - _withdrawals;
+            uint256 amountCredited = deposits - claims - withdrawals;
             _credit(winningSolver, amountCredited);
         }
 
-        uint256 netGasSurcharge = (_claims * SURCHARGE) / 10_000_000;
+        uint256 netGasSurcharge = (claims * SURCHARGE) / 10_000_000;
 
-        _claims -= netGasSurcharge;
+        tWrite(_CLAIMS, claims - netGasSurcharge);
 
         surcharge = _surcharge + netGasSurcharge;
 
-        SafeTransferLib.safeTransferETH(bundler, _claims);
-        emit GasRefundSettled(bundler, _claims);
+        SafeTransferLib.safeTransferETH(bundler, claims);
+        emit GasRefundSettled(bundler, claims);
     }
 
     function _getCalldataCost(uint256 calldataLength) internal view returns (uint256 calldataCost) {

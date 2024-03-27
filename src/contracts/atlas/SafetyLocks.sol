@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: BUSL-1.1
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import { SafetyBits } from "../libraries/SafetyBits.sol";
 import { CallBits } from "../libraries/CallBits.sol";
@@ -30,20 +30,20 @@ abstract contract SafetyLocks is Storage {
     function _setAtlasLock(address executionEnvironment, uint256 gasMarker, uint256 userOpValue) internal {
         _checkIfUnlocked();
         // Initialize the Lock
-        lock = executionEnvironment;
+        tWrite(_LOCK, uint256(uint160(executionEnvironment)));
 
         // Set the claimed amount
         uint256 rawClaims = (gasMarker + 1) * tx.gasprice;
-        claims = rawClaims + ((rawClaims * SURCHARGE) / 10_000_000);
+        tWrite(_CLAIMS, rawClaims + ((rawClaims * SURCHARGE) / 10_000_000));
 
         // Set any withdraws or deposits
-        withdrawals = userOpValue;
-        deposits = msg.value;
+        tWrite(_WITHDRAWALS, userOpValue);
+        tWrite(_DEPOSITS, msg.value);
     }
 
     // Used in AtlETH
     function _checkIfUnlocked() internal view {
-        if (lock != UNLOCKED) revert AlreadyInitialized();
+        if (lock() != _UNLOCKED) revert AlreadyInitialized();
     }
 
     function _buildEscrowLock(
@@ -76,19 +76,23 @@ abstract contract SafetyLocks is Storage {
     }
 
     function _releaseAtlasLock() internal {
-        if (lock == UNLOCKED) revert NotInitialized();
-        lock = UNLOCKED;
-        _solverLock = _UNLOCKED_UINT;
-        claims = type(uint256).max;
-        withdrawals = type(uint256).max;
-        deposits = type(uint256).max;
+        
+        if (lock() == _UNLOCKED) revert NotInitialized();
+
+        // Probably unnecessary
+        // TODO: Fuzz test to verify that simulator always reverts
+        tWrite(_LOCK, 0);
+        tWrite(_SOLVER_LOCK, 0);
+        tWrite(_CLAIMS, 0);
+        tWrite(_WITHDRAWALS, 0);
+        tWrite(_DEPOSITS, 0);    
     }
 
     function activeEnvironment() external view returns (address) {
-        return lock;
+        return lock();
     }
 
     function isUnlocked() external view returns (bool) {
-        return lock == UNLOCKED;
+        return lock() == _UNLOCKED;
     }
 }

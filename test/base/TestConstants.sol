@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import { ERC20 } from "solmate/tokens/ERC20.sol";
 
 import { IUniswapV2Pair } from "src/contracts/examples/v2-example/interfaces/IUniswapV2Pair.sol";
 
 contract TestConstants {
-    uint256 public constant BLOCK_START = 17_441_786;
+    uint256 public constant BLOCK_START = 19_521_222; // 17_441_786;
 
     // Structs
     struct ChainVars {

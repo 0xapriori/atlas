@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.22;
+pragma solidity 0.8.25;
 
 import "forge-std/Test.sol";
 
@@ -48,19 +48,19 @@ contract MockSafetyLocks is SafetyLocks {
     }
 
     function setLock(address _lock) external {
-        lock = _lock;
+        tWrite(_LOCK, uint256(uint160(_lock)));
     }
 
     function setClaims(uint256 _claims) external {
-        claims = _claims;
+        tWrite(_CLAIMS, _claims);
     }
 
     function setWithdrawals(uint256 _withdrawals) external {
-        withdrawals = _withdrawals;
+        tWrite(_WITHDRAWALS, _withdrawals);
     }
 
     function setDeposits(uint256 _deposits) external {
-        deposits = _deposits;
+        tWrite(_DEPOSITS, _deposits);
     }
 }
 
