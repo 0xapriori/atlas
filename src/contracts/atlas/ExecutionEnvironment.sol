@@ -30,6 +30,7 @@ contract ExecutionEnvironment is Base {
     constructor(address _atlas) Base(_atlas) { }
 
     modifier validUser(UserOperation calldata userOp) {
+        console.log("a");
         if (userOp.from != _user()) {
             revert("ERR-CE02 InvalidUser");
         }

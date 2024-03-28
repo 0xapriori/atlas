@@ -115,6 +115,19 @@ abstract contract Factory {
         );
     }
 
+    function getMimicCreationCode(
+        address controller,
+        uint32 callConfig,
+        address user,
+        bytes32 controlCodeHash
+    )
+        external
+        view
+        returns (bytes memory creationCode)
+    {
+        return _getMimicCreationCode(controller, callConfig, user, controlCodeHash);
+    }
+
     function _getMimicCreationCode(
         address controller,
         uint32 callConfig,
@@ -129,36 +142,35 @@ abstract contract Factory {
         // NOTE: Changing compiler settings or solidity versions can break this.
         creationCode = type(Mimic).creationCode;
 
-        // TODO: unpack the SHL and reorient
         assembly {
             mstore(
-                add(creationCode, 85),
+                add(creationCode, 79),
                 or(
-                    and(mload(add(creationCode, 85)), not(shl(96, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF))),
+                    and(mload(add(creationCode, 79)), not(shl(96, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF))),
                     shl(96, executionLib)
                 )
             )
 
             mstore(
-                add(creationCode, 118),
+                add(creationCode, 111),
                 or(
-                    and(mload(add(creationCode, 118)), not(shl(96, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF))),
+                    and(mload(add(creationCode, 111)), not(shl(96, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF))),
                     shl(96, user)
                 )
             )
 
             mstore(
-                add(creationCode, 139),
+                add(creationCode, 132),
                 or(
                     and(
-                        mload(add(creationCode, 139)),
+                        mload(add(creationCode, 132)),
                         not(shl(56, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF00FFFFFFFF))
                     ),
                     add(shl(96, controller), add(shl(88, 0x63), shl(56, callConfig)))
                 )
             )
 
-            mstore(add(creationCode, 165), controlCodeHash)
+            mstore(add(creationCode, 158), controlCodeHash)
         }
     }
 }

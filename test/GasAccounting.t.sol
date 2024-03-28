@@ -74,13 +74,20 @@ contract GasAccountingTest is Test {
     uint256 initialClaims;
     SolverOperation solverOp;
 
+    modifier transientWrapper() {
+        uint256 gasMarker = gasleft();
+        mockGasAccounting.initializeEscrowLock(executionEnvironment, gasMarker, 0);
+        initialClaims = getInitialClaims(gasMarker);
+        _;
+    }
+
     function setUp() public {
         mockGasAccounting = new MockGasAccounting(0, address(0), address(0), address(0));
-        uint256 gasMarker = gasleft();
+        // uint256 gasMarker = gasleft();
 
-        mockGasAccounting.initializeEscrowLock(executionEnvironment, gasMarker, 0);
+        // mockGasAccounting.initializeEscrowLock(executionEnvironment, gasMarker, 0);
 
-        initialClaims = getInitialClaims(gasMarker);
+        // initialClaims = getInitialClaims(gasMarker);
         solverOp.from = makeAddr("solver");
     }
 

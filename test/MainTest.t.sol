@@ -293,22 +293,24 @@ contract MainTest is BaseTest {
 
     function testMimic() public {
         // uncomment to debug if this test is broken
-        /*
+        
         address aaaaa = atlas.executionTemplate();
         address bbbbb = msg.sender;
         address ccccc = address(this);
         uint32 ddddd = uint32(0x11111111);
         bytes32 eeeee = keccak256(abi.encodePacked(uint256(0x2222)));
-        // Mimic mimic = new Mimic();
-        //console.log("----");
-        //console.log("runtime code:");
-        //console.logBytes(address(mimic).code);
-        
+
+        Mimic mimic = new Mimic();
+        console.log("----");
         console.log("aaaaa", aaaaa);
         console.log("bbbbb", bbbbb);
         console.log("ccccc", ccccc);
         console.logBytes32(eeeee);
-        console.log("----");
+        // console.log("----");
+        // console.log("runtime code:");
+        // console.logBytes(address(mimic).code);
+        
+        console.log("-----");
         console.log("creation code:");
         console.logBytes(type(Mimic).creationCode);
         console.log("----");
@@ -321,7 +323,7 @@ contract MainTest is BaseTest {
         console.log("assembly modified code:");
         console.logBytes(creationCode);
         console.log("----");
-        */
+        
 
         vm.startPrank(userEOA);
         atlas.createExecutionEnvironment(address(control));
