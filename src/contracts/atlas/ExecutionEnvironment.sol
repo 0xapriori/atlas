@@ -158,6 +158,7 @@ contract ExecutionEnvironment is Base {
         bool etherIsBidToken;
         uint256 startBalance;
 
+        // Set the startBalance to use later for bid accounting
         if (solverOp.bidToken == address(0)) {
             startBalance = 0; // address(this).balance - solverOp.value;
             etherIsBidToken = true;
@@ -241,26 +242,64 @@ contract ExecutionEnvironment is Base {
             }
         }
 
+        // Set the endBalance to use for bid accounting
         uint256 endBalance = etherIsBidToken ? address(this).balance : ERC20(solverOp.bidToken).balanceOf(address(this));
 
-        // Check if this is an on-chain, ex post bid search
+        // Check if this is the bid finding iteration (first step) of a two-step on-chain, ex post bid search. 
+        // If so, calculate what the bid would have been assuming that the amount received is the bid, and then
+        // revert afterwards with the bidAmount as the argument for the error.
+        // NOTE: For ex post bidding, the solverOp.bidAmount is the solver's MAX or MIN bid depending on whether 
+        // or not bids are inverted.  A solverOp.bidAmount of zero corresponds with there being no maximum or 
+        // minimum specified.
         if (_bidFind()) {
+            // netBid track's the calculated bid for the solver for this bid finding iteration.
             uint256 netBid;
 
+            // If invertsBidValue is true, the solver with the smallest bid will win. This is useful
+            // when solvers are competing to see which takes the least amount of tokens from a user.
+            // CASE: Largest bid wins
             if (!config.invertsBidValue()) {
+                // Calculate the bid received
                 netBid = endBalance - startBalance; // intentionally underflow on fail
+
+                // CASE: Solver specified a maxBid and the actual bid exceeded the maxBid.
                 if (solverOp.bidAmount != 0 && netBid > solverOp.bidAmount) {
+                    // Set the netBid to be the max bid. 
                     netBid = solverOp.bidAmount;
+
+                    // We reuse the endBalance variable to hold the surplus ETH balance that can
+                    // be contributed back to the Atlas gas accounting system.  If etherIsBidToken,
+                    // we avoid contributing the bid amount. 
                     endBalance = etherIsBidToken ? netBid - solverOp.bidAmount : address(this).balance;
+                
+                // CASE: Solver's netBid is their actual bid. 
                 } else {
+                    // TODO: This can be endBalance = etherIsBidToken ? 0 : address(this).balance;
                     endBalance = 0;
                 }
+
+            // CASE: Smallest bid wins
             } else {
+                // Calculate the bid received
+                // NOTE: For inverted bid amounts, the startBalance is greater than the endBalance
+                // because the solvers compete to take the least. 
                 netBid = startBalance - endBalance; // intentionally underflow on fail
+
+                // CASE: Solver specified a minimum bid and the actual bid was less than the minimum bid.
                 if (solverOp.bidAmount != 0 && netBid < solverOp.bidAmount) {
+                    // Set the netBid to be the min bid. 
                     netBid = solverOp.bidAmount;
-                    endBalance = etherIsBidToken ? solverOp.bidAmount - netBid : address(this).balance;
+
+                    // We reuse the endBalance variable to hold the surplus ETH balance that can
+                    // be contributed back to the Atlas gas accounting system.  If etherIsBidToken,
+                    // we avoid contributing the bid amount.
+                    // NOTE: Because the solvers compete to take the least, if we increase netBid to 
+                    // equal solverOp.bidAmount then solverOp.bidAmount - netBid should represent any 
+                    // requested-but-not-used ETH, which can be contributed. Here we set it to zero to 
+                    // allow for the possibility that the solver contributed it directly via reconcile()
+                    endBalance = etherIsBidToken ? 0 : address(this).balance;
                 } else {
+                    // TODO: Could be endBalance = etherIsBidToken ? 0 : address(this).balance;
                     endBalance = 0;
                 }
             }
@@ -274,34 +313,46 @@ contract ExecutionEnvironment is Base {
             (, success) = IEscrow(atlas).validateBalances();
             if (!success) revert AtlasErrors.BalanceNotReconciled();
 
-            // Solver bid was successful, revert with highest amount.
+            // Solver bid was successful, revert with the bid amount as the arg.
             revert AtlasErrors.BidFindSuccessful(netBid);
         }
 
-        // Verify that the solver paid what they bid
+        // This is either the only iteration of a non-ex post bid transaction, or the second
+        // iteration of an ex post bid transaction. We verify that the solver paid what they bid
+        // CASE: Largest bid wins,  endBalance > startBalance
         if (!config.invertsBidValue()) {
-            // CASE: higher bids are desired by beneficiary (E.G. amount transferred in by solver)
 
-            // Use bidAmount arg instead of solverOp element to ensure that ex ante bid results
-            // aren't tampered with or otherwise altered the second time around.
+            // When the largest bid wins, the bid amount is the amount transferred in by the solver. 
+            // The endBalance must be greater than or equal to the startBalance plus the bid amount.
+            // NOTE: Use bidAmount arg instead of solverOp element to ensure that any ex ante bid results
+            // from a bidFinding iteration aren't tampered with or otherwise altered.
             if (endBalance < startBalance + bidAmount) {
                 revert AtlasErrors.SolverBidUnpaid();
             }
 
-            // Get ending eth balance
+            // We reuse the endBalance variable to hold the surplus ETH balance that can
+            // be contributed back to the Atlas gas accounting system.  If etherIsBidToken,
+            // we avoid contributing the bid amount.
             endBalance = etherIsBidToken ? endBalance - bidAmount : address(this).balance;
-        } else {
-            // CASE: lower bids are desired by beneficiary (E.G. amount transferred out to solver)
 
-            // Use bidAmount arg instead of solverOp element to ensure that ex ante bid results
-            // aren't tampered with or otherwise altered the second time around.
+        // CASE: Smallest bid wins,  startBalance > endBalance
+        } else {
+
+            // When the smallest bid wins, the bid amount is the amount transferred out by the solver.
+            // The endBalance must be greater than or equal to the startBalance less the bid amount.
+            // In other words, we verify that the solver didn't take more than they said they'd take.
+            // NOTE: Use bidAmount arg instead of solverOp element to ensure that any ex ante bid results
+            // from a bidFinding iteration aren't tampered with or otherwise altered.
             if (endBalance < startBalance - bidAmount) {
                 // underflow -> revert = intended
                 revert AtlasErrors.SolverBidUnpaid();
             }
 
-            // Get ending eth balance
-            endBalance = etherIsBidToken ? endBalance : address(this).balance;
+            // We reuse the endBalance variable to hold the surplus ETH balance that can
+            // be contributed back to the Atlas gas accounting system.  If etherIsBidToken,
+            // we avoid contributing the bid amount.  Because the Solver already took what
+            // they need from the contract, we assume any remaining balance can be contributed. 
+            endBalance = etherIsBidToken ? endBalance : address(this).balance; 
         }
 
         // Contribute any surplus back - this may be used to validate balance.
