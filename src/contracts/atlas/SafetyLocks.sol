@@ -48,17 +48,13 @@ abstract contract SafetyLocks is Storage {
     /// @notice Builds an EscrowKey struct with the specified parameters, called at the start of
     /// `_preOpsUserExecutionIteration`.
     /// @param dConfig The DAppConfig of the current DAppControl contract.
-    /// @param executionEnvironment The address of the current Execution Environment.
-    /// @param userOpHash The UserOperation hash.
-    /// @param bundler The address of the bundler.
+    /// @param userDataParams The UserDataParams of the current UserOperation.
     /// @param solverOpCount The count of SolverOperations.
     /// @param isSimulation Boolean indicating whether the call is a simulation or not.
     /// @return An EscrowKey struct initialized with the provided parameters.
     function _buildEscrowLock(
         DAppConfig calldata dConfig,
-        address executionEnvironment,
-        bytes32 userOpHash,
-        address bundler,
+        UserDataParams calldata userDataParams,
         uint8 solverOpCount,
         bool isSimulation
     )
@@ -67,10 +63,10 @@ abstract contract SafetyLocks is Storage {
         returns (EscrowKey memory)
     {
         return EscrowKey({
-            executionEnvironment: executionEnvironment,
-            userOpHash: userOpHash,
-            bundler: bundler,
-            addressPointer: executionEnvironment,
+            executionEnvironment: userDataParams.executionEnvironment,
+            userOpHash: userDataParams.userOpHash,
+            bundler: userDataParams.bundler,
+            addressPointer: userDataParams.executionEnvironment,
             solverSuccessful: false,
             paymentsSuccessful: false,
             callIndex: dConfig.callConfig.needsPreOpsCall() ? 0 : 1,
@@ -79,7 +75,10 @@ abstract contract SafetyLocks is Storage {
             solverOutcome: 0,
             bidFind: false,
             isSimulation: isSimulation,
-            callDepth: 0
+            callDepth: 0,
+            userFrom: userDataParams.userFrom,
+            control: userDataParams.control,
+            callConfig: dConfig.callConfig
         });
     }
 

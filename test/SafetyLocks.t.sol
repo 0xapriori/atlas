@@ -7,6 +7,7 @@ import { SafetyLocks } from "src/contracts/atlas/SafetyLocks.sol";
 import { AtlasEvents } from "src/contracts/types/AtlasEvents.sol";
 import { AtlasErrors } from "src/contracts/types/AtlasErrors.sol";
 
+import "src/contracts/types/UserCallTypes.sol";
 import "src/contracts/types/DAppApprovalTypes.sol";
 import "src/contracts/types/LockTypes.sol";
 
@@ -26,9 +27,7 @@ contract MockSafetyLocks is SafetyLocks {
 
     function buildEscrowLock(
         DAppConfig calldata dConfig,
-        address executionEnvironment,
-        bytes32 userOpHash,
-        address bundler,
+        UserDataParams calldata userDataParams,
         uint8 solverOpCount,
         bool isSimulation
     )
@@ -36,7 +35,7 @@ contract MockSafetyLocks is SafetyLocks {
         view
         returns (EscrowKey memory escrowKey)
     {
-        return _buildEscrowLock(dConfig, executionEnvironment, userOpHash, bundler, solverOpCount, isSimulation);
+        return _buildEscrowLock(dConfig, userDataParams, solverOpCount, isSimulation);
     }
 
     function releaseEscrowLock() external {
@@ -64,8 +63,18 @@ contract SafetyLocksTest is Test {
     MockSafetyLocks public safetyLocks;
     address executionEnvironment = makeAddr("executionEnvironment");
 
+    UserDataParams userDataParams;
+
     function setUp() public {
         safetyLocks = new MockSafetyLocks();
+
+        userDataParams = UserDataParams({
+            userFrom: address(99999),
+            control: address(88888),
+            executionEnvironment: executionEnvironment,
+            userOpHash: bytes32(0),
+            bundler: address(0)
+        });
     }
 
     function test_setAtlasLock() public {
@@ -93,7 +102,7 @@ contract SafetyLocksTest is Test {
         DAppConfig memory dConfig = DAppConfig({ to: address(10), callConfig: 0, bidToken: address(0), solverGasLimit: 1_000_000});
 
         safetyLocks.initializeEscrowLock(executionEnvironment, 0, 0);
-        EscrowKey memory key = safetyLocks.buildEscrowLock(dConfig, executionEnvironment, bytes32(0), address(0), 0, false);
+        EscrowKey memory key = safetyLocks.buildEscrowLock(dConfig, userDataParams, 0, false);
         assertEq(executionEnvironment, key.executionEnvironment);
         assertEq(executionEnvironment, key.addressPointer);
     }

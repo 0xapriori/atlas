@@ -68,7 +68,16 @@ contract Atlas is Escrow, Factory {
         // Initialize the lock
         _setAtlasLock(executionEnvironment, gasMarker, userOp.value);
 
-        try this.execute(dConfig, userOp, solverOps, executionEnvironment, msg.sender, userOpHash) returns (
+        // To get around Stack Too Deep - data packed into a struct
+        UserDataParams memory userDataParams = UserDataParams({
+            userFrom: userOp.from,
+            control: dConfig.to,
+            executionEnvironment: executionEnvironment,
+            bundler: msg.sender,
+            userOpHash: userOpHash
+        });
+
+        try this.execute(dConfig, userOp, solverOps, userDataParams) returns (
             bool _auctionWon, uint256 winningSolverIndex
         ) {
             auctionWon = _auctionWon;
@@ -101,18 +110,14 @@ contract Atlas is Escrow, Factory {
     /// @param dConfig Configuration data for the DApp involved, containing execution parameters and settings.
     /// @param userOp UserOperation struct of the current metacall tx.
     /// @param solverOps SolverOperation array of the current metacall tx.
-    /// @param executionEnvironment Address of the execution environment contract of the current metacall tx.
-    /// @param bundler Address of the bundler of the current metacall tx.
-    /// @param userOpHash Hash of the userOp struct of the current metacall tx.
+    /// @param userDataParams Struct containing user data parameters.
     /// @return auctionWon Boolean indicating whether the auction was won
     /// @return uint256 The winningSolverIndex (stored in key.solverOutcome to prevent Stack Too Deep errors)
     function execute(
         DAppConfig calldata dConfig,
         UserOperation calldata userOp,
         SolverOperation[] calldata solverOps,
-        address executionEnvironment,
-        address bundler,
-        bytes32 userOpHash
+        UserDataParams calldata userDataParams
     )
         external
         payable
@@ -122,7 +127,7 @@ contract Atlas is Escrow, Factory {
         if (msg.sender != address(this)) revert InvalidAccess();
 
         (bytes memory returnData, EscrowKey memory key) =
-            _preOpsUserExecutionIteration(dConfig, userOp, solverOps, executionEnvironment, bundler, userOpHash);
+            _preOpsUserExecutionIteration(dConfig, userOp, solverOps, userDataParams);
 
         if (dConfig.callConfig.exPostBids()) {
             (auctionWon, key) = _bidFindingIteration(dConfig, userOp, solverOps, returnData, key);
@@ -156,18 +161,14 @@ contract Atlas is Escrow, Factory {
     /// @param dConfig Configuration data for the DApp involved, containing execution parameters and settings.
     /// @param userOp UserOperation struct of the current metacall tx.
     /// @param solverOps SolverOperation array of the current metacall tx.
-    /// @param executionEnvironment Address of the execution environment contract of the current metacall tx.
-    /// @param bundler Address of the bundler of the current metacall tx.
-    /// @param userOpHash Hash of the userOp struct of the current metacall tx.
+    /// @param userDataParams Struct containing user data parameters.
     /// @return bytes returnData returned from the preOps and/or userOp calls.
     /// @return EscrowKey struct containing the current state of the escrow lock.
     function _preOpsUserExecutionIteration(
         DAppConfig calldata dConfig,
         UserOperation calldata userOp,
         SolverOperation[] calldata solverOps,
-        address executionEnvironment,
-        address bundler,
-        bytes32 userOpHash
+        UserDataParams calldata userDataParams
     )
         internal
         returns (bytes memory, EscrowKey memory)
@@ -177,9 +178,8 @@ contract Atlas is Escrow, Factory {
         bytes memory returnData;
 
         // Build the memory lock
-        EscrowKey memory key = _buildEscrowLock(
-            dConfig, executionEnvironment, userOpHash, bundler, uint8(solverOps.length), bundler == SIMULATOR
-        );
+        EscrowKey memory key =
+            _buildEscrowLock(dConfig, userDataParams, uint8(solverOps.length), userDataParams.bundler == SIMULATOR);
 
         if (dConfig.callConfig.needsPreOpsCall()) {
             // CASE: Need PreOps Call
@@ -188,10 +188,11 @@ contract Atlas is Escrow, Factory {
             if (dConfig.callConfig.needsPreOpsReturnData()) {
                 // CASE: Need PreOps return data
                 usePreOpsReturnData = true;
-                (callSuccessful, returnData) = _executePreOpsCall(userOp, executionEnvironment, key.pack());
+                (callSuccessful, returnData) =
+                    _executePreOpsCall(userOp, userDataParams.executionEnvironment, key.pack());
             } else {
                 // CASE: Ignore PreOps return data
-                (callSuccessful,) = _executePreOpsCall(userOp, executionEnvironment, key.pack());
+                (callSuccessful,) = _executePreOpsCall(userOp, userDataParams.executionEnvironment, key.pack());
             }
 
             if (!callSuccessful) {
@@ -208,15 +209,17 @@ contract Atlas is Escrow, Factory {
             if (usePreOpsReturnData) {
                 // CASE: Need PreOps return Data, Need User return data
                 bytes memory userReturnData;
-                (callSuccessful, userReturnData) = _executeUserOperation(userOp, executionEnvironment, key.pack());
+                (callSuccessful, userReturnData) =
+                    _executeUserOperation(userOp, userDataParams.executionEnvironment, key.pack());
                 returnData = bytes.concat(returnData, userReturnData);
             } else {
                 // CASE: Ignore PreOps return data, Need User return data
-                (callSuccessful, returnData) = _executeUserOperation(userOp, executionEnvironment, key.pack());
+                (callSuccessful, returnData) =
+                    _executeUserOperation(userOp, userDataParams.executionEnvironment, key.pack());
             }
         } else {
             // CASE: Ignore User return data
-            (callSuccessful,) = _executeUserOperation(userOp, executionEnvironment, key.pack());
+            (callSuccessful,) = _executeUserOperation(userOp, userDataParams.executionEnvironment, key.pack());
         }
 
         if (!callSuccessful) {

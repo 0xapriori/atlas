@@ -19,3 +19,11 @@ struct UserOperation {
     bytes data;
     bytes signature;
 }
+
+struct UserDataParams {
+    address userFrom;
+    address control;
+    address executionEnvironment;
+    address bundler;
+    bytes32 userOpHash;
+}

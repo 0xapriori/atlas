@@ -43,7 +43,10 @@ contract Permit69Test is BaseTest {
             solverOutcome: 0,
             bidFind: false,
             isSimulation: false,
-            callDepth: 0
+            callDepth: 0,
+            userFrom: address(0),
+            control: address(0),
+            callConfig: 0
         });
 
         mockAtlas = new MockAtlasForPermit69Tests(10, address(0), address(0), address(0));

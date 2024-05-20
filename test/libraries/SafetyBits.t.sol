@@ -86,7 +86,10 @@ contract SafetyBitsTest is Test {
             solverOutcome: 0,
             bidFind: false,
             isSimulation: isSimulation,
-            callDepth: 0
+            callDepth: 0,
+            userFrom: address(99999),
+            control: address(88888),
+            callConfig: callConfig
         });
     }
 

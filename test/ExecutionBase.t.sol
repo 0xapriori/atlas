@@ -100,7 +100,11 @@ contract ExecutionBaseTest is BaseTest {
             solverOutcome: 2,
             bidFind: true,
             isSimulation: true,
-            callDepth: 1
+            callDepth: 1,
+            // Second set vars - not relevant in this fn
+            userFrom: address(99999),
+            control: address(88888),
+            callConfig: 0
         });
 
         if (lockState & 1 << (EXECUTION_PHASE_OFFSET + uint16(ExecutionPhase.SolverOperations)) != 0) {

@@ -15,6 +15,9 @@ struct EscrowKey {
     bool bidFind;
     bool isSimulation;
     uint8 callDepth;
+    address userFrom;
+    address control;
+    uint32 callConfig;
 }
 
 enum BaseLock {
